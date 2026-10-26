@@ -1,30 +1,14 @@
 # 🗳️ Tests unitaires – Contrat `Voting`
 
-Ce dépôt contient les tests unitaires du smart contract **Voting**, écrits en **TypeScript** avec **Hardhat**, **ethers** et **Chai**.
+Ce dépôt contient les tests unitaires du smart contract **Voting**.
 
-L'objectif est de vérifier que le contrat :
-- est correctement initialisé au déploiement ;
-- gère bien l'ajout des propositions ;
-- respecte l'ordre des étapes du workflow de vote ;
-- réserve les changements d'étape au propriétaire ;
-- émet les bons événements à chaque changement d'étape.
-
----
-
-## ⚙️ Prérequis
-
-- [Node.js](https://nodejs.org/) v22 ou plus
-- npm
-
-## 🚀 Installation et lancement
-
-```bash
-# Installer les dépendances
-npm install
-
-# Lancer tous les tests
-npx hardhat test
-```
+Ce qui est vérifié :
+- Correctement initialisé au déploiement ;
+- Gestion des propositions ;
+- Verification du passage des étapes du workflow en erreur si l'étape précédente n'est pas la bonne;
+- Verification du passage des étapes du workflow en erreur si l'étape précédente est correcte;
+- Verification des changements d'étape autorisé uniquement par le owner ;
+- Verification de la présence des logs à chaque changement d'étape.
 
 ---
 
@@ -36,14 +20,12 @@ npx hardhat test
 |---|---|
 | `owner` | Premier compte Hardhat, déploie le contrat (propriétaire) |
 | `paul` | Compte utilisé comme électeur |
-| `michel` | Compte supplémentaire disponible pour les tests |
+| `michel` | Compte électeur supplémentaire |
 
 ### Mise en place
 
 - **`before`** : récupère une seule fois les comptes de test (`owner`, `paul`, `michel`).
-- **`beforeEach`** : redéploie un contrat `Voting` **tout neuf avant chaque test**.
-
-➡️ Chaque test est donc **indépendant** : ce qu'un test modifie n'a aucun impact sur les autres.
+- **`beforeEach`** : redéploie un contrat `Voting` avant chqye test
 
 ### Rappel du workflow
 
@@ -55,8 +37,6 @@ npx hardhat test
 | `3` | VotingSessionStarted |
 | `4` | VotingSessionEnded |
 | `5` | VotesTallied |
-
-> Les valeurs d'un `enum` Solidity reviennent sous forme de `bigint` en TypeScript, d'où l'écriture `0n`, `1n`, etc.
 
 ---
 
@@ -124,15 +104,6 @@ error OwnableUnauthorizedAccount(address account);
 | `endVotingSession()` | `OwnableUnauthorizedAccount(paul)` |
 | `tallyVotes()` | `OwnableUnauthorizedAccount(paul)` |
 
-Exemple :
-
-```typescript
-await expect(voting.connect(paul).startProposalsRegistering())
-  .to.be.revertedWithCustomError(voting, "OwnableUnauthorizedAccount")
-  .withArgs(paul.address);
-```
-
-> ℹ️ `.withArgs(paul.address)` vérifie en plus que l'adresse contenue dans l'erreur est bien celle de paul, le compte qui a fait l'appel.
 
 ### 6. `voting workflow events` – Événements de changement d'étape
 
@@ -142,7 +113,7 @@ await expect(voting.connect(paul).startProposalsRegistering())
 event WorkflowStatusChange(WorkflowStatus previousStatus, WorkflowStatus newStatus);
 ```
 
-Un seul test parcourt tout le workflow et vérifie, à chaque étape, que l'événement est émis avec **l'ancien statut** et **le nouveau statut**.
+Un seul test parcourt tout le workflow et vérifie à chaque étape que l'événement est émis avec **l'ancien statut** et **le nouveau statut**.
 
 | Fonction appelée | `previousStatus` | `newStatus` |
 |---|---|---|
@@ -151,39 +122,6 @@ Un seul test parcourt tout le workflow et vérifie, à chaque étape, que l'év�
 | `startVotingSession()` | `2` | `3` |
 | `endVotingSession()` | `3` | `4` |
 | `tallyVotes()` | `4` | `5` |
-
-Exemple :
-
-```typescript
-await expect(voting.startProposalsRegistering())
-  .to.emit(voting, "WorkflowStatusChange")
-  .withArgs(0n, 1n);
-```
-
-> ℹ️ Quand l'événement a plusieurs paramètres, `withArgs` les vérifie **dans l'ordre** de leur déclaration.
-
----
-
-## 📝 Bonnes pratiques utilisées
-
-- **Tester une valeur** → `await` *dans* le `expect` :
-  ```typescript
-  expect(await voting.workflowStatus()).to.equal(1n);
-  ```
-- **Tester un revert ou un event** → `await` *devant* le `expect` :
-  ```typescript
-  await expect(voting.connect(paul).addProposal("")).to.be.revertedWith("...");
-  ```
-- **Agir avec un autre compte** → `.connect(compte)` :
-  ```typescript
-  await voting.connect(paul).addProposal("proposal 1");
-  ```
-- **Tester une custom error** → `revertedWithCustomError` (+ `withArgs` pour vérifier ses paramètres) :
-  ```typescript
-  await expect(voting.connect(paul).tallyVotes())
-    .to.be.revertedWithCustomError(voting, "OwnableUnauthorizedAccount")
-    .withArgs(paul.address);
-  ```
 
 ---
 
@@ -198,18 +136,6 @@ npx hardhat test --coverage
 | Fichier | Statements | Branches | Functions | Lines |
 |---|---|---|---|---|
 | `voting.sol` | 🟡 **79,54 %** (35/44) | 100 % (0/0) | 100 % (0/0) | 🟡 **79,54 %** (35/44) |
-
-**Ce que mesurent les colonnes :**
-- **Statements** : part des instructions du contrat exécutées au moins une fois pendant les tests.
-- **Branches** : part des chemins de conditions (`if`, `require`…) testés dans les deux sens (vrai / faux).
-- **Functions** : part des fonctions appelées au moins une fois.
-- **Lines** : part des lignes de code exécutées.
-
-> ℹ️ Les colonnes **Branches** et **Functions** affichent `0/0` : l'outil n'a rien compté pour ces deux métriques, le `100 %` n'est donc pas significatif. Les indicateurs fiables ici sont **Statements** et **Lines**.
-
-**Pistes d'amélioration :** 9 instructions sur 44 ne sont pas encore couvertes. Elles concernent principalement les parties non testées : l'enregistrement des votes (`setVote`), la lecture d'un électeur (`getVoter`) et le calcul du gagnant dans `tallyVotes`. Le détail ligne par ligne est visible dans `coverage/index.html`.
-
----
 
 ## 📊 Résumé
 
